@@ -98,7 +98,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Intent intent = new Intent(MainActivity.this, WiFiDirectActivity.class);
             startActivity(intent);
         } else if(type.equalsIgnoreCase("QRCODE")) {
-
+            Intent intent = new Intent(MainActivity.this, QRActivity.class);
+            startActivity(intent);
         } else if(type.equalsIgnoreCase("SMS")) {
 
         } else if(type.equalsIgnoreCase("INTERNET")) {

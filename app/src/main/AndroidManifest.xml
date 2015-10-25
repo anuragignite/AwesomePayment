@@ -27,7 +27,7 @@
 
     <uses-feature
         android:name="android.hardware.nfc"
-        android:required="true" />
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -44,18 +44,21 @@
         </activity>
 
         <activity android:name=".activities.WiFiDirectActivity"></activity>
+        <activity android:name=".activities.QRActivity"></activity>
+
 
         <!--<activity-->
-        <!--android:name="com.google.zxing.client.result.android.CaptureActivity"-->
-        <!--android:configChanges="orientation|keyboardHidden"-->
-        <!--android:screenOrientation="landscape"-->
-        <!--android:theme="@android:style/Theme.NoTitleBar.Fullscreen"-->
-        <!--android:windowSoftInputMode="stateAlwaysHidden">-->
-        <!--<intent-filter>-->
-        <!--<action android:name="com.google.zxing.client.android.SCAN" />-->
-        <!--<category android:name="android.intent.category.DEFAULT" />-->
-        <!--</intent-filter>-->
+            <!--android:name="com.google.zxing.client.android.CaptureActivity"-->
+            <!--android:configChanges="orientation|keyboardHidden"-->
+            <!--android:screenOrientation="landscape"-->
+            <!--android:theme="@android:style/Theme.NoTitleBar.Fullscreen"-->
+            <!--android:windowSoftInputMode="stateAlwaysHidden">-->
+            <!--<intent-filter>-->
+                <!--<action android:name="com.google.zxing.client.android.SCAN" />-->
+                <!--<category android:name="android.intent.category.DEFAULT" />-->
+            <!--</intent-filter>-->
         <!--</activity>-->
+
 
         <receiver android:name=".listeners.SmsListener">
             <intent-filter>
@@ -64,17 +67,17 @@
         </receiver>
 
 
-        <receiver
-            android:name="com.google.android.gms.gcm.GcmReceiver"
-            android:exported="true"
-            android:permission="com.google.android.c2dm.permission.SEND">
-            <intent-filter>
-                <action android:name="com.google.android.c2dm.intent.REGISTRATION" />
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+        <!--<receiver-->
+            <!--android:name="com.google.android.gms.gcm.GcmReceiver"-->
+            <!--android:exported="true"-->
+            <!--android:permission="com.google.android.c2dm.permission.SEND">-->
+            <!--<intent-filter>-->
+                <!--<action android:name="com.google.android.c2dm.intent.REGISTRATION" />-->
+                <!--<action android:name="com.google.android.c2dm.intent.RECEIVE" />-->
 
-                <category android:name="com.example.gcm" />
-            </intent-filter>
-        </receiver>
+                <!--<category android:name="com.example.gcm" />-->
+            <!--</intent-filter>-->
+        <!--</receiver>-->
         <!--<service-->
         <!--android:name="com.example.MyGcmListenerService"-->
         <!--android:exported="false" >-->
