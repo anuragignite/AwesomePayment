@@ -18,9 +18,8 @@ import com.example.anurag.awesomepayment.listeners.Constants;
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     private ListView listView;
-    private EditText et_payment;
-    private Button b_start_payment;
-    private String[] paymentTypeArray = {"NFC", "WIFI-DIRECT", "QRCODE", "SMS", "INTERNET"};
+//    private String[] paymentTypeArray = {"NFC", "WIFI-DIRECT", "QRCODE", "SMS", "INTERNET"};
+    private String[] paymentTypeArray = {"WIFI-DIRECT", "QRCODE"};
     private boolean isPaymentInProgress;
 
 
@@ -30,10 +29,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         setContentView(R.layout.activity_main);
 
         listView = (ListView) findViewById(R.id.listView);
-        et_payment = (EditText) findViewById(R.id.et_payment);
-        b_start_payment = (Button) findViewById(R.id.b_start_payment);
-        b_start_payment.setOnClickListener(this);
-
 
         PaymentMethodAdapter paymentMethodAdapter = new PaymentMethodAdapter();
         listView.setAdapter(paymentMethodAdapter);
@@ -45,7 +40,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         switch (v.getId()) {
             case R.id.b_start_payment:
                 isPaymentInProgress = true;
-                b_start_payment.setText("Payment in progress...");
 //
                 break;
             default:

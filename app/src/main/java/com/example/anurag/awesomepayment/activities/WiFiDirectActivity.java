@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Color;
 import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
@@ -17,6 +18,7 @@ import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.util.Log;
@@ -89,13 +91,21 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         et_payment = (EditText) findViewById(R.id.et_payment);
         b_start_payment = (Button) findViewById(R.id.b_start_payment);
         userText = (TextView) findViewById(R.id.userText);
+        b_start_payment.setVisibility(View.GONE);
         b_start_payment.setOnClickListener(this);
 
         et_payment.clearFocus();
+        et_payment.setVisibility(View.GONE);
         InputMethodManager inputMethodManager = (InputMethodManager) getSystemService(Activity.INPUT_METHOD_SERVICE);
         inputMethodManager.hideSoftInputFromWindow(et_payment.getWindowToken(), 0);
+        b_start_payment.requestFocus();
 
+        addIntentFiltersAndInitManager();
+        onInitiateDiscovery();
+        addListAdapter();
+    }
 
+    private void addIntentFiltersAndInitManager() {
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
@@ -103,150 +113,57 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 
         manager = (WifiP2pManager) getSystemService(Context.WIFI_P2P_SERVICE);
         channel = manager.initialize(this, getMainLooper(), null);
+    }
 
+    public void onInitiateDiscovery() {
+//        if (!isWifiP2pEnabled) {
+//            Toast.makeText(WiFiDirectActivity.this, R.string.p2p_off_warning,
+//                    Toast.LENGTH_SHORT).show();
+//            if (manager != null && channel != null) {
+//                // Since this is the system wireless settings activity, it's
+//                // not going to send us a result. We will be notified by
+//                // WiFiDeviceBroadcastReceiver instead.
+//                startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+//            } else {
+//                Log.e(TAG, "channel or manager is null");
+//            }
+//
+//        } else {
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.dismiss();
+        }
+        progressDialog = ProgressDialog.show(WiFiDirectActivity.this, "Press back to cancel", "finding peers", true,
+                true, new DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                    }
+                });
+        manager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
+            @Override
+            public void onSuccess() {
+                Toast.makeText(WiFiDirectActivity.this, "Discovery Initiated",
+                        Toast.LENGTH_SHORT).show();
+            }
 
-        onInitiateDiscovery();
+            @Override
+            public void onFailure(int reasonCode) {
+                Toast.makeText(WiFiDirectActivity.this, "Discovery Failed : " + reasonCode,
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+//        }
+    }
 
+    private void addListAdapter() {
         WiFiPeerListAdapter paymentMethodAdapter = new WiFiPeerListAdapter();
         listView.setAdapter(paymentMethodAdapter);
 
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                if(TextUtils.isEmpty(et_payment.getText().toString())){
-                    Toast.makeText(WiFiDirectActivity.this, "Please input money", Toast.LENGTH_LONG).show();
-                    return;
-                }
-
-                WifiP2pConfig config = new WifiP2pConfig();
-                device = peers.get(position);
-                config.deviceAddress = device.deviceAddress;
-                config.wps.setup = WpsInfo.PBC;
-                if (progressDialog != null && progressDialog.isShowing()) {
-                    progressDialog.dismiss();
-                }
-                progressDialog = ProgressDialog.show(WiFiDirectActivity.this, "Press back to cancel",
-                        "Connecting to :" + device.deviceAddress, true, true
-//                        new DialogInterface.OnCancelListener() {
-//
-//                            @Override
-//                            public void onCancel(DialogInterface dialog) {
-//                                ((DeviceActionListener) getActivity()).cancelDisconnect();
-//                            }
-//                        }
-                );
-
-                manager.connect(channel, config, new WifiP2pManager.ActionListener() {
-
-                    @Override
-                    public void onSuccess() {
-                        // WiFiDirectBroadcastReceiver will notify us. Ignore for now.
-                    }
-
-                    @Override
-                    public void onFailure(int reason) {
-                        Toast.makeText(WiFiDirectActivity.this, "Connect failed. Retry.",
-                                Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-        });
-
-    }
-
-    @Override
-    public void onClick(View v) {
-        switch (v.getId()) {
-            case R.id.b_start_payment:
-//                isPaymentInProgress = true;
-//                b_start_payment.setText("Payment in progress...");
-//
-                break;
-            default:
-//
-                break;
-        }
-    }
-
-    @Override
-    public void onChannelDisconnected() {
-        // we will try once more
-        if (manager != null && !retryChannel) {
-            Toast.makeText(this, "Channel lost. Trying again", Toast.LENGTH_LONG).show();
-            resetData();
-            retryChannel = true;
-            manager.initialize(this, getMainLooper(), this);
-        } else {
-            Toast.makeText(this,
-                    "Severe! Channel is probably lost premanently. Try Disable/Re-Enable P2P.",
-                    Toast.LENGTH_LONG).show();
-        }
-    }
-
-
-    public void resetData() {
-        peers.clear();
-        ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
-    }
-
-
-    public void updateThisDevice(WifiP2pDevice device) {
-        if(device != null){
-            for (int i = 0; i < peers.size(); i++) {
-                if(peers.get(i).deviceAddress.equalsIgnoreCase(device.deviceAddress)){
-                    peers.set(i, device);
-                    ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
-                    break;
-                }
-            }
-        }
-//        TextView view = (TextView) mContentView.findViewById(R.id.my_name);
-//        view.setText(device.deviceName);
-//        view = (TextView) mContentView.findViewById(R.id.my_status);
-//        view.setText(getDeviceStatus(device.status));
-    }
-
-
-    private class WiFiPeerListAdapter extends BaseAdapter {
-
-        @Override
-        public int getCount() {
-            return peers.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return null;
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return 0;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            View v = convertView;
-            if (v == null) {
-                LayoutInflater vi = (LayoutInflater) WiFiDirectActivity.this.getSystemService(
-                        Context.LAYOUT_INFLATER_SERVICE);
-                v = vi.inflate(android.R.layout.simple_list_item_1, null);
-            }
-            WifiP2pDevice device = peers.get(position);
-            if (device != null) {
-                TextView top = (TextView) v.findViewById(android.R.id.text1);
-//                TextView bottom = (TextView) v.findViewById(R.id.device_details);
-                if (top != null) {
-                    top.setText(device.deviceName);
-                }
-//                if (bottom != null) {
-//                    bottom.setText(getDeviceStatus(device.status));
-//                }
-            }
-
-            return v;
-
-        }
+//        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+//            @Override
+//            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+//                connectToDevice(position);
+//            }
+//        });
     }
 
     @Override
@@ -278,36 +195,236 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 
     }
 
-    public void onInitiateDiscovery() {
+    private static String getDeviceStatus(int deviceStatus) {
+        Log.d(WiFiDirectActivity.TAG, "Peer status :" + deviceStatus);
+        switch (deviceStatus) {
+            case WifiP2pDevice.AVAILABLE:
+                return "Available";
+            case WifiP2pDevice.INVITED:
+                return "Invited";
+            case WifiP2pDevice.CONNECTED:
+                return "Connected";
+            case WifiP2pDevice.FAILED:
+                return "Failed";
+            case WifiP2pDevice.UNAVAILABLE:
+                return "Unavailable";
+            default:
+                return "Unknown";
+
+        }
+    }
+
+    @Override
+    public void onChannelDisconnected() {
+        // we will try once more
+        if (manager != null && !retryChannel) {
+            Toast.makeText(this, "Channel lost. Trying again", Toast.LENGTH_LONG).show();
+            resetData();
+            retryChannel = true;
+            manager.initialize(this, getMainLooper(), this);
+        } else {
+            Toast.makeText(this,
+                    "Severe! Channel is probably lost premanently. Try Disable/Re-Enable P2P.",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.b_start_payment:
+//                isPaymentInProgress = true;
+//                b_start_payment.setText("Payment in progress...");
+                if (info != null) {
+                    if (!TextUtils.isEmpty(et_payment.getText().toString())) {
+
+                        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
+                                WiFiDirectActivity.this);
+                        // set title
+                        alertDialogBuilder.setTitle("Initiate payment...");
+                        // set dialog message
+                        alertDialogBuilder
+                                .setMessage("Payment of " + et_payment.getText().toString() + " Rs will be asked from user to pay. Would you like to continue?")
+                                .setCancelable(false)
+                                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int id) {
+                                        // if this button is clicked, just close
+                                        // the dialog box and do nothing
+
+                                        SendDataAsyncTask sendDataAsyncTask = new SendDataAsyncTask("We request payment of " + et_payment.getText().toString(), info.groupOwnerAddress.getHostAddress(), 8988);
+                                        sendDataAsyncTask.execute();
+                                        dialog.cancel();
+                                    }
+                                })
+                                .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int id) {
+                                        // if this button is clicked, just close
+                                        // the dialog box and do nothing
+
+                                        dialog.cancel();
+                                    }
+                                });
+
+                        // create alert dialog
+                        AlertDialog alertDialog = alertDialogBuilder.create();
+                        // show it
+                        alertDialog.show();
+                    } else {
+                        Toast.makeText(WiFiDirectActivity.this, "Please enter money in Rs.", Toast.LENGTH_LONG).show();
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    public void resetData() {
+        peers.clear();
+        ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
+    }
+
+
+    private class WiFiPeerListAdapter extends BaseAdapter {
+
+        @Override
+        public int getCount() {
+            return peers.size();
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return null;
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return 0;
+        }
+
+        @Override
+        public View getView(final int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                LayoutInflater vi = (LayoutInflater) WiFiDirectActivity.this.getSystemService(
+                        Context.LAYOUT_INFLATER_SERVICE);
+                convertView = vi.inflate(R.layout.peerlist_items, null);
+            }
+            WifiP2pDevice deviceLocal = peers.get(position);
+            if (deviceLocal != null) {
+                TextView device_name = (TextView) convertView.findViewById(R.id.device_name);
+                TextView device_address = (TextView) convertView.findViewById(R.id.device_address);
+                TextView device_status = (TextView) convertView.findViewById(R.id.device_status);
+                Button connect_button = (Button) convertView.findViewById(R.id.connect_button);
+
+                device_name.setText(deviceLocal.deviceName);
+                device_address.setText(deviceLocal.deviceAddress);
+                device_status.setText(getDeviceStatus(deviceLocal.status));
+
+                if (deviceLocal.status == WifiP2pDevice.AVAILABLE) {
+                    connect_button.setVisibility(View.VISIBLE);
+                    connect_button.setText("Connect");
+                    connect_button.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            connectToDevice(position);
+                        }
+                    });
+                } else if (deviceLocal.status == WifiP2pDevice.CONNECTED) {
+                    connect_button.setVisibility(View.VISIBLE);
+                    connect_button.setText("Disconnect");
+                    connect_button.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            disconnectDevice();
+                        }
+                    });
+                } else {
+                    connect_button.setVisibility(View.GONE);
+                }
+            }
+            if (device != null && deviceLocal.deviceName.equalsIgnoreCase(device.deviceName)) {
+                convertView.setBackgroundColor(Color.GREEN);
+            } else {
+                convertView.setBackgroundColor(Color.WHITE);
+            }
+            return convertView;
+
+        }
+    }
+
+    private void connectToDevice(int position) {
+
+        //                if(TextUtils.isEmpty(et_payment.getText().toString())){
+        //                    Toast.makeText(WiFiDirectActivity.this, "Please input money", Toast.LENGTH_LONG).show();
+        //                    return;
+        //                }
+        WifiP2pConfig config = new WifiP2pConfig();
+        device = peers.get(position);
+        config.deviceAddress = device.deviceAddress;
+        config.wps.setup = WpsInfo.PBC;
         if (progressDialog != null && progressDialog.isShowing()) {
             progressDialog.dismiss();
         }
-        progressDialog = ProgressDialog.show(WiFiDirectActivity.this, "Press back to cancel", "finding peers", true,
-                true, new DialogInterface.OnCancelListener() {
+        progressDialog = ProgressDialog.show(WiFiDirectActivity.this, "Press back to cancel",
+                "Connecting to :" + device.deviceName, true, true
+//                        new DialogInterface.OnCancelListener() {
+//
+//                            @Override
+//                            public void onCancel(DialogInterface dialog) {
+//                                ((DeviceActionListener) getActivity()).cancelDisconnect();
+//                            }
+//                        }
+        );
 
-                    @Override
-                    public void onCancel(DialogInterface dialog) {
-
-                    }
-                });
-
-
-        manager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
+        manager.connect(channel, config, new WifiP2pManager.ActionListener() {
 
             @Override
             public void onSuccess() {
-                Toast.makeText(WiFiDirectActivity.this, "Discovery Initiated",
-                        Toast.LENGTH_SHORT).show();
+                // WiFiDirectBroadcastReceiver will notify us. Ignore for now.
             }
 
             @Override
-            public void onFailure(int reasonCode) {
-                Toast.makeText(WiFiDirectActivity.this, "Discovery Failed : " + reasonCode,
+            public void onFailure(int reason) {
+                Toast.makeText(WiFiDirectActivity.this, "Connect failed. Retry.",
                         Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private void disconnectDevice() {
+        manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
+
+            @Override
+            public void onFailure(int reasonCode) {
+                Log.d(TAG, "Disconnect failed. Reason :" + reasonCode);
+
+            }
+
+            @Override
+            public void onSuccess() {
+                ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
+            }
+
+        });
+    }
 
 
+    public void updateThisDevice(WifiP2pDevice device) {
+//        if(device != null){
+//            for (int i = 0; i < peers.size(); i++) {
+//                if(peers.get(i).deviceAddress.equalsIgnoreCase(device.deviceAddress)){
+//                    peers.set(i, device);
+//                    ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
+//                    break;
+//                }
+//            }
+//        }
+//        this.device = device;
+
+//        TextView view = (TextView) mContentView.findViewById(R.id.my_name);
+//        view.setText(device.deviceName);
+//        view = (TextView) mContentView.findViewById(R.id.my_status);
+//        view.setText(getDeviceStatus(device.status));
     }
 
     @Override
@@ -316,6 +433,8 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
             progressDialog.dismiss();
         }
         this.info = info;
+//        ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
+
 //        this.getView().setVisibility(View.VISIBLE);
 //
 //        // The owner IP is now known.
@@ -334,19 +453,29 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         if (info.groupFormed && info.isGroupOwner) {
 //            new FileServerAsyncTask(getActivity(), mContentView.findViewById(R.id.status_text))
 //                    .execute();
+            ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
+            et_payment.setVisibility(View.GONE);
+
+            b_start_payment.setClickable(false);
             b_start_payment.setVisibility(View.GONE);
-            if(info != null){
-                SendDataAsyncTask sendDataAsyncTask = new SendDataAsyncTask("We request payment of 1000", info.groupOwnerAddress.getHostAddress(), 8988);
-                sendDataAsyncTask.execute();
-            }
 
-
+            Toast.makeText(WiFiDirectActivity.this, "You are group owner", Toast.LENGTH_LONG).show();
+            ReceiveDataAsyncTask receiveDataAsyncTask = new ReceiveDataAsyncTask();
+            receiveDataAsyncTask.execute();
         } else if (info.groupFormed) {
             // The other device acts as the client. In this case, we enable the
             // get file button.
-            b_start_payment.setVisibility(View.GONE);
-            ReceiveDataAsyncTask receiveDataAsyncTask = new ReceiveDataAsyncTask();
-            receiveDataAsyncTask.execute();
+            et_payment.setVisibility(View.VISIBLE);
+
+            Toast.makeText(WiFiDirectActivity.this, "You are client", Toast.LENGTH_LONG).show();
+
+            b_start_payment.setVisibility(View.VISIBLE);
+            b_start_payment.setClickable(true);
+
+            if (device != null) {
+                b_start_payment.setText("Ask for payment from " + device.deviceName);
+            }
+
 
 //            mContentView.findViewById(R.id.btn_start_client).setVisibility(View.VISIBLE);
 //            ((TextView) mContentView.findViewById(R.id.status_text)).setText(getResources()
@@ -356,8 +485,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 //        // hide the connect button
 //        mContentView.findViewById(R.id.btn_connect).setVisibility(View.GONE);
     }
-
-
 
 
     public class ReceiveDataAsyncTask extends AsyncTask<Void, Void, String> {
@@ -415,16 +542,16 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                 // set title
                 alertDialogBuilder.setTitle("Please pay to merchant...");
 
+                String digits = result.replaceAll("[^0-9.]", "");
+
                 // set dialog message
                 alertDialogBuilder
-                        .setMessage("Payment of 1000 Rs will be cut from your account. Would you like to procceed?")
+                        .setMessage("Payment of " + digits + " Rs will be cut from your account. Would you like to procceed?")
                         .setCancelable(false)
                         .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int id) {
                                 // if this button is clicked, just close
                                 // the dialog box and do nothing
-
-
                                 dialog.cancel();
                             }
                         })
@@ -458,7 +585,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 
     }
 
-
     public class SendDataAsyncTask extends AsyncTask<Void, Void, String> {
 
         private Context context = WiFiDirectActivity.this;
@@ -466,10 +592,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         private String host = "";
         private int port = 0;
 
-        /**
-         * @param context
-         * @param statusText
-         */
         public SendDataAsyncTask(String message, String host, int port) {
             this.message = message;
             this.host = host;
@@ -479,7 +601,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         @Override
         protected String doInBackground(Void... params) {
             Socket socket = new Socket();
-
+            String operationResponse = "failure";
             try {
                 Log.d(WiFiDirectActivity.TAG, "Opening client socket - ");
                 socket.bind(null);
@@ -494,10 +616,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 //                } catch (FileNotFoundException e) {
 //                    Log.d(WiFiDirectActivity.TAG, e.toString());
 //                }
-                is = new ByteArrayInputStream("User has authorised payment of 1000".getBytes(Charset.forName("UTF-8")));
+                is = new ByteArrayInputStream(message.getBytes(Charset.forName("UTF-8")));
 
                 transferMoney(is, stream);
                 Log.d(WiFiDirectActivity.TAG, "Client: Data written");
+                operationResponse = "successful";
             } catch (IOException e) {
                 Log.e(WiFiDirectActivity.TAG, e.getMessage());
             } finally {
@@ -512,8 +635,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                     }
                 }
             }
-            return "";
-
+            return operationResponse;
         }
 
         /*
@@ -522,45 +644,49 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
          */
         @Override
         protected void onPostExecute(String result) {
-            if (result != null) {
+            if (result.equalsIgnoreCase("success")) {
+                b_start_payment.setText("connecting to customer for response");
 //                statusText.setText("File copied - " + result);
 //                Intent intent = new Intent();
 //                intent.setAction(android.content.Intent.ACTION_VIEW);
 //                intent.setDataAndType(Uri.parse("file://" + result), "image/*");
 //                context.startActivity(intent);
-                AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
-                        context);
+//                AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
+//                        context);
+//
+//                // set title
+//                alertDialogBuilder.setTitle("Accept Payment from user..");
+//
+//                // set dialog message
+//                alertDialogBuilder
+//                        .setMessage("Payment of 1000 Rs will be received in your account. Would you like to procceed?")
+//                        .setCancelable(false)
+//                        .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+//                            public void onClick(DialogInterface dialog, int id) {
+//                                // if this button is clicked, just close
+//                                // the dialog box and do nothing
+//
+//
+//                                dialog.cancel();
+//                            }
+//                        })
+//                        .setNegativeButton("No", new DialogInterface.OnClickListener() {
+//                            public void onClick(DialogInterface dialog, int id) {
+//                                // if this button is clicked, just close
+//                                // the dialog box and do nothing
+//
+//                                dialog.cancel();
+//                            }
+//                        });
+//
+//                // create alert dialog
+//                AlertDialog alertDialog = alertDialogBuilder.create();
+//
+//                // show it
+//                alertDialog.show();
 
-                // set title
-                alertDialogBuilder.setTitle("Accept Payment from user..");
-
-                // set dialog message
-                alertDialogBuilder
-                        .setMessage("Payment of 1000 Rs will be received in your account. Would you like to procceed?")
-                        .setCancelable(false)
-                        .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int id) {
-                                // if this button is clicked, just close
-                                // the dialog box and do nothing
-
-
-                                dialog.cancel();
-                            }
-                        })
-                        .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int id) {
-                                // if this button is clicked, just close
-                                // the dialog box and do nothing
-
-                                dialog.cancel();
-                            }
-                        });
-
-                // create alert dialog
-                AlertDialog alertDialog = alertDialogBuilder.create();
-
-                // show it
-                alertDialog.show();
+            } else if (result.equalsIgnoreCase("failure")) {
+                b_start_payment.setText("connecting to customer is failed");
 
             }
 
@@ -573,6 +699,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         @Override
         protected void onPreExecute() {
 //            statusText.setText("Opening a server socket");
+
         }
 
     }

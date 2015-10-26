@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AwesomePayment</string>
+    <string name="p2p_off_warning">Enable P2P from action bar button above or system settings</string>
 </resources>
