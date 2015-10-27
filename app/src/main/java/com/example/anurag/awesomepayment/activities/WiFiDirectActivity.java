@@ -316,7 +316,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                 }
             }
             if (device != null && deviceLocal.deviceName.equalsIgnoreCase(device.deviceName)) {
-                convertView.setBackgroundColor(Color.GREEN);
+                convertView.setBackgroundColor(Color.LTGRAY);
             } else {
                 convertView.setBackgroundColor(Color.WHITE);
             }
@@ -495,10 +495,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         WiFiDirectActivity.this.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                Toast.makeText(WiFiDirectActivity.this, input, Toast.LENGTH_LONG).show();
                 if (isHostType) {
                     if (input.contains("action-initpayment")) {
                         showDialogCustomerInitPayment(input);
+                    } else if (input.contains("action-confirmpaymenttellusertorefresh")) {
+                        paymentFinishedNowRestartPayment();
                     }
                 } else {
                     if (input.contains("action-confirmpayment")) {
@@ -556,7 +557,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
                 WiFiDirectActivity.this);
         alertDialogBuilder.setTitle("Please pay to merchant...");
-        String digits = result.replaceAll("[^0-9.]", "");
+        final String digits = result.replaceAll("[^0-9.]", "");
         alertDialogBuilder
                 .setMessage("Payment of " + digits + " Rs will be cut from your account. Would you like to procceed?")
                 .setCancelable(false)
@@ -565,7 +566,7 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                         if (outputWriterThread != null && outputWriterThread.isAlive()) {
                             outputWriterThread.interrupt();
                         }
-                        outputWriterThread = new OutputWriterThread("action-confirmpayment");
+                        outputWriterThread = new OutputWriterThread("action-confirmpayment,money-" + digits);
                         outputWriterThread.start();
                         dialog.cancel();
                     }
@@ -587,8 +588,14 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         alertDialogBuilder
                 .setMessage("Payment of " + digits + " Rs is added to your account :)")
                 .setCancelable(false)
-                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
+                        if (outputWriterThread != null && outputWriterThread.isAlive()) {
+                            outputWriterThread.interrupt();
+                        }
+                        outputWriterThread = new OutputWriterThread("action-confirmpaymenttellusertorefresh");
+                        outputWriterThread.start();
+                        paymentFinishedNowRestartPayment();
                         dialog.cancel();
                     }
                 });
@@ -599,6 +606,14 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 //                });
         AlertDialog alertDialog = alertDialogBuilder.create();
         alertDialog.show();
+    }
+
+    private void paymentFinishedNowRestartPayment(){
+        b_start_payment.setVisibility(View.GONE);
+        et_payment.setVisibility(View.GONE);
+        disconnectDevice();
+        onInitiateDiscovery();
+        addListAdapter();
     }
 
     public class ConnectSocketAsyncTask extends AsyncTask<Void, Void, String> {
@@ -644,7 +659,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         @Override
         protected void onPostExecute(String s) {
             super.onPostExecute(s);
-            Toast.makeText(context, "Socket is open now", Toast.LENGTH_LONG).show();
             if (isHost) {
                 customerSocketListener();
             }
