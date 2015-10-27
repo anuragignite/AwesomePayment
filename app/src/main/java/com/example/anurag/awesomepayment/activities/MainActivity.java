@@ -19,7 +19,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private ListView listView;
 //    private String[] paymentTypeArray = {"NFC", "WIFI-DIRECT", "QRCODE", "SMS", "INTERNET"};
-    private String[] paymentTypeArray = {"WIFI-DIRECT", "QRCODE"};
+//    private String[] paymentTypeArray = {"WIFI-DIRECT", "QRCODE"};
+    private String[] paymentTypeArray = {"WIFI-DIRECT"};
     private boolean isPaymentInProgress;
 
 

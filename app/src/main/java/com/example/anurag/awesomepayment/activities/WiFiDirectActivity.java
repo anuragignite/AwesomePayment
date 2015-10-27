@@ -4,10 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.net.wifi.WpsInfo;
@@ -18,7 +16,6 @@ import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.util.Log;
@@ -26,8 +23,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -36,11 +31,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.anurag.awesomepayment.R;
-import com.example.anurag.awesomepayment.listeners.Constants;
 import com.example.anurag.awesomepayment.receivers.WiFiDirectBroadcastReceiver;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -58,7 +53,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
     private EditText et_payment;
     private TextView userText;
     private Button b_start_payment;
-    private String[] paymentTypeArray = {"NFC", "WIFI-DIRECT", "QRCODE", "SMS", "INTERNET"};
     private boolean isPaymentInProgress;
 
     private List<WifiP2pDevice> peers = new ArrayList<WifiP2pDevice>();
@@ -74,6 +68,11 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
     private WifiP2pManager.Channel channel;
     private BroadcastReceiver receiver = null;
     private WifiP2pInfo info;
+    private Socket client = null;
+    private InputReaderThread inputReaderThread;
+    private OutputWriterThread outputWriterThread;
+    private boolean isHostType;
+
 
     /**
      * @param isWifiP2pEnabled the isWifiP2pEnabled to set
@@ -157,13 +156,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
     private void addListAdapter() {
         WiFiPeerListAdapter paymentMethodAdapter = new WiFiPeerListAdapter();
         listView.setAdapter(paymentMethodAdapter);
-
-//        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-//            @Override
-//            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-//                connectToDevice(position);
-//            }
-//        });
     }
 
     @Override
@@ -210,7 +202,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                 return "Unavailable";
             default:
                 return "Unknown";
-
         }
     }
 
@@ -233,42 +224,9 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.b_start_payment:
-//                isPaymentInProgress = true;
-//                b_start_payment.setText("Payment in progress...");
-                if (info != null) {
+                if (client != null && client.isConnected()) {
                     if (!TextUtils.isEmpty(et_payment.getText().toString())) {
-
-                        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
-                                WiFiDirectActivity.this);
-                        // set title
-                        alertDialogBuilder.setTitle("Initiate payment...");
-                        // set dialog message
-                        alertDialogBuilder
-                                .setMessage("Payment of " + et_payment.getText().toString() + " Rs will be asked from user to pay. Would you like to continue?")
-                                .setCancelable(false)
-                                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                                    public void onClick(DialogInterface dialog, int id) {
-                                        // if this button is clicked, just close
-                                        // the dialog box and do nothing
-
-                                        SendDataAsyncTask sendDataAsyncTask = new SendDataAsyncTask("We request payment of " + et_payment.getText().toString(), info.groupOwnerAddress.getHostAddress(), 8988);
-                                        sendDataAsyncTask.execute();
-                                        dialog.cancel();
-                                    }
-                                })
-                                .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                                    public void onClick(DialogInterface dialog, int id) {
-                                        // if this button is clicked, just close
-                                        // the dialog box and do nothing
-
-                                        dialog.cancel();
-                                    }
-                                });
-
-                        // create alert dialog
-                        AlertDialog alertDialog = alertDialogBuilder.create();
-                        // show it
-                        alertDialog.show();
+                        showDialogMerchantInitPayment();
                     } else {
                         Toast.makeText(WiFiDirectActivity.this, "Please enter money in Rs.", Toast.LENGTH_LONG).show();
                     }
@@ -276,6 +234,21 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                 break;
             default:
                 break;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (client != null) {
+            if (client.isConnected()) {
+                try {
+                    client.close();
+                } catch (IOException e) {
+                    // Give up
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
@@ -353,11 +326,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
     }
 
     private void connectToDevice(int position) {
-
-        //                if(TextUtils.isEmpty(et_payment.getText().toString())){
-        //                    Toast.makeText(WiFiDirectActivity.this, "Please input money", Toast.LENGTH_LONG).show();
-        //                    return;
-        //                }
         WifiP2pConfig config = new WifiP2pConfig();
         device = peers.get(position);
         config.deviceAddress = device.deviceAddress;
@@ -377,7 +345,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         );
 
         manager.connect(channel, config, new WifiP2pManager.ActionListener() {
-
             @Override
             public void onSuccess() {
                 // WiFiDirectBroadcastReceiver will notify us. Ignore for now.
@@ -397,14 +364,12 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
             @Override
             public void onFailure(int reasonCode) {
                 Log.d(TAG, "Disconnect failed. Reason :" + reasonCode);
-
             }
 
             @Override
             public void onSuccess() {
                 ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
             }
-
         });
     }
 
@@ -451,257 +416,239 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
 //        // server. The file server is single threaded, single connection server
 //        // socket.
         if (info.groupFormed && info.isGroupOwner) {
-//            new FileServerAsyncTask(getActivity(), mContentView.findViewById(R.id.status_text))
-//                    .execute();
+
+            isHostType = true;
+
             ((WiFiPeerListAdapter) listView.getAdapter()).notifyDataSetChanged();
             et_payment.setVisibility(View.GONE);
 
             b_start_payment.setClickable(false);
             b_start_payment.setVisibility(View.GONE);
 
-            Toast.makeText(WiFiDirectActivity.this, "You are group owner", Toast.LENGTH_LONG).show();
-            ReceiveDataAsyncTask receiveDataAsyncTask = new ReceiveDataAsyncTask();
-            receiveDataAsyncTask.execute();
+            ConnectSocketAsyncTask connectSocketAsyncTask = new ConnectSocketAsyncTask(WiFiDirectActivity.this, true, "N/A", 0);
+            connectSocketAsyncTask.execute();
         } else if (info.groupFormed) {
             // The other device acts as the client. In this case, we enable the
             // get file button.
             et_payment.setVisibility(View.VISIBLE);
-
-            Toast.makeText(WiFiDirectActivity.this, "You are client", Toast.LENGTH_LONG).show();
-
             b_start_payment.setVisibility(View.VISIBLE);
             b_start_payment.setClickable(true);
 
             if (device != null) {
                 b_start_payment.setText("Ask for payment from " + device.deviceName);
             }
-
-
-//            mContentView.findViewById(R.id.btn_start_client).setVisibility(View.VISIBLE);
-//            ((TextView) mContentView.findViewById(R.id.status_text)).setText(getResources()
-//                    .getString(R.string.client_text));
+            ConnectSocketAsyncTask connectSocketAsyncTask = new ConnectSocketAsyncTask(WiFiDirectActivity.this, false, info.groupOwnerAddress.getHostAddress(), 8988);
+            connectSocketAsyncTask.execute();
         }
-//
-//        // hide the connect button
-//        mContentView.findViewById(R.id.btn_connect).setVisibility(View.GONE);
+    }
+
+    private void customerSocketListener() {
+        if (inputReaderThread != null && inputReaderThread.isAlive()) {
+            inputReaderThread.interrupt();
+        }
+        inputReaderThread = new InputReaderThread();
+        inputReaderThread.start();
+    }
+
+    private void merchantSocketListener() {
+        if (inputReaderThread != null && inputReaderThread.isAlive()) {
+            inputReaderThread.interrupt();
+        }
+        inputReaderThread = new InputReaderThread();
+        inputReaderThread.start();
+
+        if (outputWriterThread != null && outputWriterThread.isAlive()) {
+            outputWriterThread.interrupt();
+        }
+        outputWriterThread = new OutputWriterThread("action-initpayment, money-" + et_payment.getText().toString());
+        outputWriterThread.start();
     }
 
 
-    public class ReceiveDataAsyncTask extends AsyncTask<Void, Void, String> {
-
-        private Context context = WiFiDirectActivity.this;
-
-//        public ReceiveDataAsyncTask(Context context, View statusText) {
-//            this.context = context;
-//        }
-
+    private class InputReaderThread extends Thread {
         @Override
-        protected String doInBackground(Void... params) {
-            try {
-                ServerSocket serverSocket = new ServerSocket(8988);
-                Log.d(WiFiDirectActivity.TAG, "Server: Socket opened");
-                Socket client = serverSocket.accept();
-                Log.d(WiFiDirectActivity.TAG, "Server: connection done");
-//                final File f = new File(Environment.getExternalStorageDirectory() + "/"
-//                        + context.getPackageName() + "/wifip2pshared-" + System.currentTimeMillis()
-//                        + ".jpg");
+        public void run() {
+            if (client != null && client.isConnected()) {
+                try {
+                    InputStream is = client.getInputStream();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+                    String line;
+                    StringBuilder sb = new StringBuilder();
+                    while ((line = reader.readLine()) != null) {
+                        if (line.equals("~~/START/~~"))
+                            sb = new StringBuilder();
+                        else if (line.equals("~~/END/~~")) {
+                            processInputData(sb.toString());
+                            sb.delete(0, sb.length());
+                        } else
+                            sb.append(line);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
 
-//                File dirs = new File(f.getParent());
-//                if (!dirs.exists())
-//                    dirs.mkdirs();
-//                f.createNewFile();
-
-//                Log.d(WiFiDirectActivity.TAG, "server: copying files " + f.toString());
-                InputStream inputstream = client.getInputStream();
-                String response = convertStreamToString(inputstream);
-//                copyFile(inputstream, new FileOutputStream(f));
-                serverSocket.close();
-//                return f.getAbsolutePath();
-                return response;
-            } catch (IOException e) {
-                Log.e(WiFiDirectActivity.TAG, e.getMessage());
-                return null;
             }
         }
-
-        /*
-         * (non-Javadoc)
-         * @see android.os.AsyncTask#onPostExecute(java.lang.Object)
-         */
-        @Override
-        protected void onPostExecute(String result) {
-            if (result != null) {
-//                statusText.setText("File copied - " + result);
-//                Intent intent = new Intent();
-//                intent.setAction(android.content.Intent.ACTION_VIEW);
-//                intent.setDataAndType(Uri.parse("file://" + result), "image/*");
-//                context.startActivity(intent);
-                AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
-                        context);
-
-                // set title
-                alertDialogBuilder.setTitle("Please pay to merchant...");
-
-                String digits = result.replaceAll("[^0-9.]", "");
-
-                // set dialog message
-                alertDialogBuilder
-                        .setMessage("Payment of " + digits + " Rs will be cut from your account. Would you like to procceed?")
-                        .setCancelable(false)
-                        .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int id) {
-                                // if this button is clicked, just close
-                                // the dialog box and do nothing
-                                dialog.cancel();
-                            }
-                        })
-                        .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int id) {
-                                // if this button is clicked, just close
-                                // the dialog box and do nothing
-
-                                dialog.cancel();
-                            }
-                        });
-
-                // create alert dialog
-                AlertDialog alertDialog = alertDialogBuilder.create();
-
-                // show it
-                alertDialog.show();
-
-            }
-
-        }
-
-        /*
-         * (non-Javadoc)
-         * @see android.os.AsyncTask#onPreExecute()
-         */
-        @Override
-        protected void onPreExecute() {
-//            statusText.setText("Opening a server socket");
-        }
-
     }
 
-    public class SendDataAsyncTask extends AsyncTask<Void, Void, String> {
+    private void processInputData(final String input) {
+        WiFiDirectActivity.this.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(WiFiDirectActivity.this, input, Toast.LENGTH_LONG).show();
+                if (isHostType) {
+                    if (input.contains("action-initpayment")) {
+                        showDialogCustomerInitPayment(input);
+                    }
+                } else {
+                    if (input.contains("action-confirmpayment")) {
+                        showDialogConfirmPayment(input);
+                    }
+                }
+            }
+        });
+    }
 
-        private Context context = WiFiDirectActivity.this;
-        private String message = "";
+
+    private class OutputWriterThread extends Thread {
+        String msg;
+
+        public OutputWriterThread(String msg) {
+            this.msg = "~~/START/~~\n" + msg + "\n~~/END/~~\n";
+        }
+
+        @Override
+        public void run() {
+            if (client != null && client.isConnected()) {
+                try {
+                    OutputStream os = client.getOutputStream();
+                    transferMoney(new ByteArrayInputStream(msg.getBytes(Charset.forName("UTF-8"))), os);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void showDialogMerchantInitPayment() {
+        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
+                WiFiDirectActivity.this);
+        alertDialogBuilder.setTitle("Initiate payment...");
+        alertDialogBuilder
+                .setMessage("Payment of " + et_payment.getText().toString() + " Rs will be asked from user to pay. Would you like to continue?")
+                .setCancelable(false)
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        merchantSocketListener();
+                        dialog.cancel();
+                    }
+                })
+                .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        dialog.cancel();
+                    }
+                });
+        AlertDialog alertDialog = alertDialogBuilder.create();
+        alertDialog.show();
+    }
+
+    private void showDialogCustomerInitPayment(String result) {
+        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
+                WiFiDirectActivity.this);
+        alertDialogBuilder.setTitle("Please pay to merchant...");
+        String digits = result.replaceAll("[^0-9.]", "");
+        alertDialogBuilder
+                .setMessage("Payment of " + digits + " Rs will be cut from your account. Would you like to procceed?")
+                .setCancelable(false)
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        if (outputWriterThread != null && outputWriterThread.isAlive()) {
+                            outputWriterThread.interrupt();
+                        }
+                        outputWriterThread = new OutputWriterThread("action-confirmpayment");
+                        outputWriterThread.start();
+                        dialog.cancel();
+                    }
+                })
+                .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        dialog.cancel();
+                    }
+                });
+        AlertDialog alertDialog = alertDialogBuilder.create();
+        alertDialog.show();
+    }
+
+    private void showDialogConfirmPayment(String result) {
+        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
+                WiFiDirectActivity.this);
+        alertDialogBuilder.setTitle("Payment successful... :)");
+        String digits = result.replaceAll("[^0-9.]", "");
+        alertDialogBuilder
+                .setMessage("Payment of " + digits + " Rs is added to your account :)")
+                .setCancelable(false)
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        dialog.cancel();
+                    }
+                });
+//                .setNegativeButton("No", new DialogInterface.OnClickListener() {
+//                    public void onClick(DialogInterface dialog, int id) {
+//                        dialog.cancel();
+//                    }
+//                });
+        AlertDialog alertDialog = alertDialogBuilder.create();
+        alertDialog.show();
+    }
+
+    public class ConnectSocketAsyncTask extends AsyncTask<Void, Void, String> {
+
+        private Context context;
+        private boolean isHost;
         private String host = "";
         private int port = 0;
 
-        public SendDataAsyncTask(String message, String host, int port) {
-            this.message = message;
+        public ConnectSocketAsyncTask(Context context, boolean isHost, String host, int port) {
+            this.context = context;
+            this.isHost = isHost;
             this.host = host;
             this.port = port;
         }
 
         @Override
         protected String doInBackground(Void... params) {
-            Socket socket = new Socket();
-            String operationResponse = "failure";
             try {
-                Log.d(WiFiDirectActivity.TAG, "Opening client socket - ");
-                socket.bind(null);
-                socket.connect((new InetSocketAddress(host, port)), 5000);
-
-                Log.d(WiFiDirectActivity.TAG, "Client socket - " + socket.isConnected());
-                OutputStream stream = socket.getOutputStream();
-                ContentResolver cr = context.getContentResolver();
-                InputStream is = null;
-//                try {
-//                    is = cr.openInputStream(Uri.parse(fileUri));
-//                } catch (FileNotFoundException e) {
-//                    Log.d(WiFiDirectActivity.TAG, e.toString());
-//                }
-                is = new ByteArrayInputStream(message.getBytes(Charset.forName("UTF-8")));
-
-                transferMoney(is, stream);
-                Log.d(WiFiDirectActivity.TAG, "Client: Data written");
-                operationResponse = "successful";
-            } catch (IOException e) {
-                Log.e(WiFiDirectActivity.TAG, e.getMessage());
-            } finally {
-                if (socket != null) {
-                    if (socket.isConnected()) {
-                        try {
-                            socket.close();
-                        } catch (IOException e) {
-                            // Give up
-                            e.printStackTrace();
-                        }
+                if (client == null || !client.isConnected()) {
+                    if (isHost) {
+                        ServerSocket serverSocket = new ServerSocket(8988);
+                        Log.d(WiFiDirectActivity.TAG, "Server: Socket opened");
+                        client = serverSocket.accept();
+                        client.setKeepAlive(true);
+                        Log.d(WiFiDirectActivity.TAG, "Server: connection done");
+                    } else {
+                        Log.d(WiFiDirectActivity.TAG, "Opening client socket - ");
+                        client = new Socket();
+                        client.bind(null);
+                        client.connect((new InetSocketAddress(host, port)), 5000);
+                        client.setKeepAlive(true);
+                        Log.d(WiFiDirectActivity.TAG, "Client socket - " + client.isConnected());
                     }
                 }
+                return "";
+            } catch (IOException e) {
+                Log.e(WiFiDirectActivity.TAG, e.getMessage());
+                return null;
             }
-            return operationResponse;
         }
 
-        /*
-         * (non-Javadoc)
-         * @see android.os.AsyncTask#onPostExecute(java.lang.Object)
-         */
         @Override
-        protected void onPostExecute(String result) {
-            if (result.equalsIgnoreCase("success")) {
-                b_start_payment.setText("connecting to customer for response");
-//                statusText.setText("File copied - " + result);
-//                Intent intent = new Intent();
-//                intent.setAction(android.content.Intent.ACTION_VIEW);
-//                intent.setDataAndType(Uri.parse("file://" + result), "image/*");
-//                context.startActivity(intent);
-//                AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
-//                        context);
-//
-//                // set title
-//                alertDialogBuilder.setTitle("Accept Payment from user..");
-//
-//                // set dialog message
-//                alertDialogBuilder
-//                        .setMessage("Payment of 1000 Rs will be received in your account. Would you like to procceed?")
-//                        .setCancelable(false)
-//                        .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-//                            public void onClick(DialogInterface dialog, int id) {
-//                                // if this button is clicked, just close
-//                                // the dialog box and do nothing
-//
-//
-//                                dialog.cancel();
-//                            }
-//                        })
-//                        .setNegativeButton("No", new DialogInterface.OnClickListener() {
-//                            public void onClick(DialogInterface dialog, int id) {
-//                                // if this button is clicked, just close
-//                                // the dialog box and do nothing
-//
-//                                dialog.cancel();
-//                            }
-//                        });
-//
-//                // create alert dialog
-//                AlertDialog alertDialog = alertDialogBuilder.create();
-//
-//                // show it
-//                alertDialog.show();
-
-            } else if (result.equalsIgnoreCase("failure")) {
-                b_start_payment.setText("connecting to customer is failed");
-
+        protected void onPostExecute(String s) {
+            super.onPostExecute(s);
+            Toast.makeText(context, "Socket is open now", Toast.LENGTH_LONG).show();
+            if (isHost) {
+                customerSocketListener();
             }
-
         }
-
-        /*
-         * (non-Javadoc)
-         * @see android.os.AsyncTask#onPreExecute()
-         */
-        @Override
-        protected void onPreExecute() {
-//            statusText.setText("Opening a server socket");
-
-        }
-
     }
 
     public static boolean transferMoney(InputStream inputStream, OutputStream out) {
@@ -712,7 +659,8 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
                 out.write(buf, 0, len);
 
             }
-            out.close();
+            out.flush();
+//            out.close();
             inputStream.close();
         } catch (IOException e) {
             Log.d(WiFiDirectActivity.TAG, e.toString());
@@ -724,7 +672,6 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
     private static String convertStreamToString(InputStream is) {
         BufferedReader reader = new BufferedReader(new InputStreamReader(is));
         StringBuilder sb = new StringBuilder();
-
         String line = null;
         try {
             while ((line = reader.readLine()) != null) {
@@ -741,6 +688,4 @@ public class WiFiDirectActivity extends AppCompatActivity implements View.OnClic
         }
         return sb.toString();
     }
-
-
 }

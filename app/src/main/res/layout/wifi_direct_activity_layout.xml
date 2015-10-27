@@ -26,24 +26,34 @@
         android:text=""
         android:textSize="18sp" />
 
-    <EditText
-        android:id="@+id/et_payment"
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@+id/userText"
-        android:layout_marginTop="20dp"
-        android:ems="10"
-        android:hint="Enter amount"
-        android:inputType="numberDecimal" />
-
-    <Button
-        android:id="@+id/b_start_payment"
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
         android:layout_alignParentBottom="true"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentStart="true"
-        android:text="Start Payment" />
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentRight="true"
+        android:background="@android:color/white"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <EditText
+            android:id="@+id/et_payment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ems="10"
+            android:hint="Enter amount"
+            android:inputType="numberDecimal" />
+
+        <Button
+            android:id="@+id/b_start_payment"
+            android:layout_width="match_parent"
+            android:layout_marginTop="10dp"
+            android:layout_height="60dp"
+            android:text="Start Payment" />
+
+
+    </LinearLayout>
 
 
 </RelativeLayout>
